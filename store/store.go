@@ -1,9 +1,16 @@
 package store
 
 import (
+	"fmt"
+
 	"github.com/google/uuid"
 )
 
+//WILL MOVE ERROR SOMEWHERE ELSE....
+type Error struct {
+	Status int    `json:"status,omitempty"`
+	Msg    string `json:"msg,omitempty"`
+}
 type Employee struct {
 	Name       string    `json:"name,omitempty"`
 	Email      string    `json:"email,omitempty"`
@@ -40,8 +47,10 @@ var Employee2 = Employee{
 	Department: "HR",
 }
 
-Employees[uuid1] = Employee1
-Employees[uuid2] = Employee2
+func AddEmployees() {
 
+	Employees[uuid1] = Employee1
+	Employees[uuid2] = Employee2
 
-fmt.Println(Employees)
+	fmt.Println(Employees)
+}

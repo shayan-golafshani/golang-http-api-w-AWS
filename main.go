@@ -7,11 +7,12 @@ import (
 	"os"
 
 	"github.com/gorilla/mux"
-	//"github.com/sendgrid/golang-http-api-w-AWS/handlers"
 	"github.com/shayan-golafshani/golang-http-api-w-AWS/handlers"
+	"github.com/shayan-golafshani/golang-http-api-w-AWS/store"
 )
 
 func main() {
+	store.AddEmployees()
 
 	myRouter := mux.NewRouter()
 
@@ -22,14 +23,14 @@ func main() {
 
 	fmt.Println("server starting on port: ", port)
 
+	//Get employee details using EmployeeID
+	myRouter.HandleFunc("/v1/employee/{id}", func(w http.ResponseWriter, r *http.Request) {
+		handlers.GetEmployee(w, r)
+	}).Methods("GET")
+
 	myRouter.HandleFunc("/v1/employee/add", func(w http.ResponseWriter, r *http.Request) {
 		handlers.PostEmployee(w, r)
 	}).Methods("POST")
-
-	//Get employee details using EmployeeID
-	myRouter.HandleFunc("v1/employee/{id}", func(w http.ResponseWriter, r *http.Request) {
-		handlers.GetEmployee(w, r)
-	}).Methods("GET")
 
 	err := http.ListenAndServe(port, myRouter)
 	log.Fatal(err)
