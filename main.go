@@ -28,6 +28,11 @@ func main() {
 		handlers.GetEmployee(w, r)
 	}).Methods("GET")
 
+	//add deletion
+	myRouter.HandleFunc("/v1/employee/delete", func(w http.ResponseWriter, r *http.Request) {
+		handlers.DeleteEmployee(w, r)
+	}).Methods("DELETE")
+
 	myRouter.HandleFunc("/v1/employee/add", func(w http.ResponseWriter, r *http.Request) {
 		handlers.PostEmployee(w, r)
 	}).Methods("POST")
