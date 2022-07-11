@@ -1,4 +1,4 @@
-module golang-http-api-w-AWS
+module github.com/shayan-golafshani/golang-http-api-w-AWS
 
 go 1.18
 

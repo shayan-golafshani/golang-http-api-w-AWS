@@ -5,13 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"code.hq.twilio.com/hatch/twilio-working-groups-service/helpers"
 	"github.com/google/uuid"
 )
-
-type postReqBody struct {
-	EmployeeName string
-}
 
 type Employee struct {
 	Name       string    `json:"name,omitempty"`
@@ -27,44 +22,36 @@ type GetOneEmployee struct {
 	Employee Employee `json:"employee,omitempty"`
 }
 
-func PostOneEmployee(w http.ResponseWriter, r *http.Request) {
+func PostEmployee(w http.ResponseWriter, r *http.Request) {
 
 	var newEmployeeUUID = uuid.New()
 	fmt.Println("Employee UUID:", newEmployeeUUID)
 
-	//reqAdminID := r.Header["Admin-Id"][0]
-	var post postReqBody
+	//decode the employee from what's posted.
+	var post Employee
 
 	err := json.NewDecoder(r.Body).Decode(&post)
+
+	fmt.Println("Error in creating employee", err)
+
 	if err != nil {
-		helpers.Panic(w, http.StatusBadRequest, "Request Body Config Issues", err)
-		return
+		fmt.Println("You've got request body issues")
 	}
 
-	if post.EmployeeName == "" {
-		helpers.Panic(w, http.StatusBadRequest, "Please enter an Employee Name", err)
-		return
+	if post.Name == "" {
+		fmt.Println("Please enter an Employee Name")
 	}
-
-	// currentID, err := uuid.Parse(reqAdminID)
-	// if err != nil {
-	// 	helpers.Panic(w, http.StatusBadRequest, "Admin-Id in Headers not valid UUID", err)
-	// }
-
-	// if !helpers.UserExists(ds.UserMap, currentID) {
-	// 	helpers.Panic(w, http.StatusNotFound, "Admin-Id in header not a registered user", err)
-	// }
 
 	newEmployee := Employee{
-		Name:       post.EmployeeName,
-		Email:      (post.EmployeeName + "@twilio.com"),
+		Name:       post.Name,
+		Email:      (post.Name + "@twilio.com"),
 		EmployeeId: newEmployeeUUID,
-		City:       "",
-		Address:    "",
-		Department: "",
+		City:       post.City,
+		Address:    post.Address,
+		Department: post.Department,
 	}
 
-	fmt.Println(newEmployee)
+	fmt.Println("New recruit ->", newEmployee)
 
 	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
