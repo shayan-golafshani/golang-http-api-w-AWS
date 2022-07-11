@@ -6,20 +6,13 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	//"github.com/sendgrid/golang-http-api-w-AWS/store"
+	"github.com/shayan-golafshani/golang-http-api-w-AWS/store"
 )
 
-type Employee struct {
-	Name       string    `json:"name,omitempty"`
-	Email      string    `json:"email,omitempty"`
-	EmployeeId uuid.UUID `json:"employeeId,omitempty"`
-	City       string    `json:"city,omitempty"`
-	Address    string    `json:"address,omitempty"`
-	Department string    `json:"department,omitempty"`
-}
-
 type GetOneEmployee struct {
-	Status   int      `json:"status,omitempty"`
-	Employee Employee `json:"employee,omitempty"`
+	Status   int            `json:"status,omitempty"`
+	Employee store.Employee `json:"employee,omitempty"`
 }
 
 func PostEmployee(w http.ResponseWriter, r *http.Request) {
@@ -28,7 +21,7 @@ func PostEmployee(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Employee UUID:", newEmployeeUUID)
 
 	//decode the employee from what's posted.
-	var post Employee
+	var post store.Employee
 
 	err := json.NewDecoder(r.Body).Decode(&post)
 
@@ -42,7 +35,7 @@ func PostEmployee(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Please enter an Employee Name")
 	}
 
-	newEmployee := Employee{
+	newEmployee := store.Employee{
 		Name:       post.Name,
 		Email:      (post.Name + "@twilio.com"),
 		EmployeeId: newEmployeeUUID,
@@ -52,6 +45,11 @@ func PostEmployee(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Println("New recruit ->", newEmployee)
+
+	//store the employee data
+	store.Employees[newEmployee.EmployeeId] = newEmployee
+
+	//probably going to need to store this to DynamoDB
 
 	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
