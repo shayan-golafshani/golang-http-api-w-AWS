@@ -37,6 +37,10 @@ func main() {
 		handlers.PostEmployee(w, r)
 	}).Methods("POST")
 
+	myRouter.HandleFunc("/v1/employee/{id}/update", func(w http.ResponseWriter, r *http.Request) {
+		handlers.UpdateEmployee(w, r)
+	}).Methods("PATCH")
+
 	err := http.ListenAndServe(port, myRouter)
 	log.Fatal(err)
 }
