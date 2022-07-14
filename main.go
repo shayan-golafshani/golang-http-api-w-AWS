@@ -9,9 +9,7 @@ import (
 	"github.com/shayan-golafshani/golang-http-api-w-AWS/store"
 
 	awslambda "github.com/aws/aws-lambda-go/lambda"
-	"github.com/sendgrid/mc-contacts-custom-fields/internal/handlers"
 	"github.com/sendgrid/mcauto/apigw"
-	"github.com/sendgrid/mclogger/lib/logger"
 )
 
 type Server struct {
@@ -75,7 +73,7 @@ func GetRouter(server *Server) *mux.Router {
 func main() {
 	handler, err := Router()
 	if err != nil {
-		logger.NewEntry().Fatal("Unable to create http router for lambda:httpServer", err)
+		fmt.Printf("Unable to create http router for lambda:httpServer", err)
 	}
 	awslambda.Start(apigw.Handle(handler))
 }
