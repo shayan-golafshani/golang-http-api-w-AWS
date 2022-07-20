@@ -18,7 +18,7 @@ type deletionResponse struct {
 	Employees map[uuid.UUID]store.Employee
 }
 
-func DeleteEmployee(w http.ResponseWriter, r *http.Request) {
+func (s Server) DeleteEmployee(w http.ResponseWriter, r *http.Request) {
 
 	var post deletionReq
 
@@ -40,31 +40,38 @@ func DeleteEmployee(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//PARSE BODY
-	validID, err := uuid.Parse(post.EmployeeId.String())
+	//TODO
+	//validID, err := uuid.Parse(post.EmployeeId.String())
 
 	//CHECK FOR A VALID UUID
-	_, ok := store.Employees[validID]
 
-	if !ok {
-		fmt.Println("Status 404, Employee ID not found.")
+	//TODO
+	//_, ok := store.Employees[validID]
 
-		w.WriteHeader(http.StatusNotFound)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 404, Msg: "Employee Id not valid, can't be deleted"})
-		return
-	}
-
-	if ok {
-		delete(store.Employees, validID)
-	}
+	//TODO
+	//if !ok {
+	//	fmt.Println("Status 404, Employee ID not found.")
+	//
+	//	w.WriteHeader(http.StatusNotFound)
+	//	w.Header().Set("Content-Type", "application/json")
+	//	json.NewEncoder(w).Encode(store.Error{Status: 404, Msg: "Employee Id not valid, can't be deleted"})
+	//	return
+	//}
+	//
+	//if ok {
+	//	delete(store.Employees, validID)
+	//}
 
 	w.WriteHeader(http.StatusNoContent)
 	w.Header().Set("Content-Type", "application/json")
-	resp := deletionResponse{204, store.Employees}
+	//TODO
+	//resp := deletionResponse{204, store.Employees}
 
-	json.NewEncoder(w).Encode(resp)
+	////TODO
+	//json.NewEncoder(w).Encode(resp)
 
 	fmt.Println("Removed employee! さよなら！")
 	fmt.Println("/n ------------------------------------- /n")
-	fmt.Println(store.Employees)
+	//TODO
+	//fmt.Println(store.Employees)
 }

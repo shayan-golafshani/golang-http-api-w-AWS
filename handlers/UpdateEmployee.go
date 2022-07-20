@@ -3,6 +3,9 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -16,12 +19,12 @@ type UpdateEmployeeInfo struct {
 }
 
 //Pick up here where you left off.
-func UpdateEmployee(w http.ResponseWriter, req *http.Request) {
+func (s Server) UpdateEmployee(w http.ResponseWriter, req *http.Request) {
 
 	var updatedEmployee store.Employee
 
 	decoder := json.NewDecoder(req.Body)
-	decoder.DisallowUnknownFields()
+	//decoder.DisallowUnknownFields()
 	err := decoder.Decode(&updatedEmployee)
 	fmt.Println("JSON ERROR DECODING", err)
 
@@ -57,13 +60,35 @@ func UpdateEmployee(w http.ResponseWriter, req *http.Request) {
 	}
 
 	//fmt.Println("STORE EMPLOYEES", store.Employees)
-	currentEmployeeInfo, ok := store.Employees[validID]
-	// 404 not found, uuid does not exist
-	if !ok {
-		fmt.Println("Status 404, employee id not found.")
-		w.WriteHeader(http.StatusNotFound)
+	output, err := s.Db.GetItem(&dynamodb.GetItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			"EmployeeId": &dynamodb.AttributeValue{
+				S: aws.String(validID.String()),
+			},
+		},
+		TableName: aws.String(TableName),
+	})
+	if err != nil {
+		//panic(fmt.Sprintf("failed to DynamoDB marshal Record, %v", err))
+		fmt.Println("UPDATE: Error getting EmployeeID out of DynamoDB:", err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "Employee ID not found!"})
+		json.NewEncoder(w).Encode(store.Error{Status: 500, Msg: "Unable to find employee!"})
+		return
+	}
+
+	//currentEmployeeInfo, ok := store.Employees[validID]
+	currentEmployeeInfo := store.Employee{}
+	err2 := dynamodbattribute.UnmarshalMap(output.Item, &currentEmployeeInfo)
+
+	fmt.Println("PRINTING OUTPUT.ITEM ->", output.Item)
+
+	// Checking to see if the employee info can be unmarshalled from DynamoDb AV
+	if err2 != nil {
+		fmt.Println("UPDATE: Problem unmarshalling your employee from Dynamo.", err2.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(store.Error{Status: 500, Msg: "UPDATE: Employee ID, not found-- unmarshall-able!"})
 		return
 	}
 
@@ -92,15 +117,43 @@ func UpdateEmployee(w http.ResponseWriter, req *http.Request) {
 
 	fmt.Println("AFTER UPDATING INFO: ", newEmployeeCopy)
 
-	store.Employees[validID] = newEmployeeCopy
+	//store.Employees[validID] = newEmployeeCopy
+
+	//Store updated employee into dynamoDB
+	_, updateItemErr := s.Db.UpdateItem(&dynamodb.UpdateItemInput{
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":city":       {S: aws.String(newEmployeeCopy.City)},
+			":address":    {S: aws.String(newEmployeeCopy.Address)},
+			":name":       {S: aws.String(newEmployeeCopy.Name)},
+			":department": {S: aws.String(newEmployeeCopy.Department)},
+			":email":      {S: aws.String(newEmployeeCopy.Email)},
+		},
+		TableName: aws.String(TableName),
+		Key: map[string]*dynamodb.AttributeValue{
+			"EmployeeId": {
+				S: aws.String(currentEmployeeInfo.EmployeeId),
+			},
+		},
+		ReturnValues: aws.String("UPDATED_NEW"),
+		UpdateExpression: aws.String(
+			`set city = :city,
+				address = :address,
+				name = :name,
+				department = :department,
+				email = :email`),
+	})
+
+	if updateItemErr != nil {
+		fmt.Println("FAILED TO UPDATE YOUR EMPLOYEE RECORD!", updateItemErr.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(store.Error{Status: 500, Msg: "FAILED TO UPDATE YOUR EMPLOYEE RECORD!"})
+		return
+	}
 
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
-
-	resp := UpdateEmployeeInfo{Status: 200, UpdatedEmployee: store.Employees[validID]}
-
-	//helpers.MakeHistory(validWorkingGroupID, validAdminID, auditAction, http.StatusOK, "Success")
+	resp := UpdateEmployeeInfo{Status: 200, UpdatedEmployee: newEmployeeCopy}
 	json.NewEncoder(w).Encode(resp)
-
 	fmt.Println("Successful update of employee info")
 }
