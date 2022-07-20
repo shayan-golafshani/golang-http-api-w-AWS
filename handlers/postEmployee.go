@@ -18,6 +18,7 @@ type GetOneEmployee struct {
 }
 
 func (s Server) PostEmployee(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("POST EMPLOYEE CALLED")
 
 	var newEmployeeUUID = uuid.New()
 	fmt.Println("Employee UUID:", newEmployeeUUID)
@@ -26,46 +27,53 @@ func (s Server) PostEmployee(w http.ResponseWriter, r *http.Request) {
 	var post store.Employee
 
 	err := json.NewDecoder(r.Body).Decode(&post)
-
 	if err != nil {
-		fmt.Println("You've got request body issues", err)
+		fmt.Println("POST: You've got request body issues", err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(store.Error{Status: 500, Msg: "POST: Unable to decode request body! Try again"})
 	}
 	if post.Name == "" {
-		fmt.Println("Please enter an Employee Name")
+		//TODO send a response of failed internal server error back
+		fmt.Println("POST: Please enter an Employee Name, it's empty now")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "POST: Reform your request with an employeeName! Try again"})
 	}
 
 	newEmployee := store.Employee{
 		Name:       post.Name,
-		Email:      (post.Name + "@twilio.com"),
+		Email:      post.Name + "@twilio.com",
 		EmployeeId: newEmployeeUUID.String(),
 		City:       post.City,
 		Address:    post.Address,
 		Department: post.Department,
 	}
+	fmt.Println("New employee:", newEmployee)
 
-	fmt.Println("New recruit ->", newEmployee)
-
-	//store the employee data locally
-	//store.Employees[newEmployee.EmployeeId] = newEmployee
-
-	//store this to DynamoDB
-	dynamoDbEmployee, err := dynamodbattribute.MarshalMap(newEmployee)
-	if err != nil {
-		panic(fmt.Sprintf("failed to DynamoDB marshal Record, %v", err))
+	//store newEmployee to DynamoDB after marshalMapping them
+	dynamoDbEmployee, errMarshalling := dynamodbattribute.MarshalMap(newEmployee)
+	if errMarshalling != nil {
+		fmt.Sprintf("POST: failed to DynamoDB marshal Record, %v", errMarshalling.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(store.Error{Status: 500, Msg: "POST: Unable to MarshallMap your employee! Try again"})
 	}
 
-	_, err = s.Db.PutItem(&dynamodb.PutItemInput{
+	_, errPutItem := s.Db.PutItem(&dynamodb.PutItemInput{
 		TableName: aws.String(TableName),
 		Item:      dynamoDbEmployee,
 	})
-	if err != nil {
-		panic(fmt.Sprintf("failed to put Record to DynamoDB, %v", err))
+	if errPutItem != nil {
+		fmt.Sprintf("POST: failed to put Record to DynamoDB, %v", errPutItem.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(store.Error{Status: 500, Msg: "POST: failed to put Record to DynamoDB!"})
 	}
 
+	//send response created!
 	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
-
 	resp := GetOneEmployee{http.StatusCreated, newEmployee}
-
 	json.NewEncoder(w).Encode(resp)
 }
