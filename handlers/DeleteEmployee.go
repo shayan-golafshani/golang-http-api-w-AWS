@@ -15,7 +15,7 @@ type deletionReq struct {
 	EmployeeId uuid.UUID `json:"EmployeeId,omitempty"`
 }
 
-type deletionResponse struct {
+type DeletionResponse struct {
 	Status int
 	Msg    string ``
 }
@@ -30,38 +30,43 @@ func (s Server) DeleteEmployee(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Deletion Request Body Config Issues", deleteErrDynamo.Error())
 		w.WriteHeader(http.StatusBadRequest)
 		w.Header().Set("Content-Type", "application/json")
-		err := json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "DELETE: Deletion request body config issues."})
-		if err != nil {
-			fmt.Println("failed to write error", err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
+		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "DELETE: Deletion request body config issues."})
 		return
 	}
 
-	if post.EmployeeId.String() == "" {
-		fmt.Println("Please Submit EmployeeId for deletion")
+	if post.EmployeeId.String() == "00000000-0000-0000-0000-000000000000" {
+		fmt.Println("Cannot send a null JSON body in, specify an employeeId please")
 		w.WriteHeader(http.StatusBadRequest)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "DELETE: Please Submit EmployeeId for deletion"})
+		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "DELETE: Cannot pass in an empty body, attach a valid employeeId to delete."})
 		return
 	}
 
+	//TODO seems like this check is also taken care of by the decoding from JSON....
+	//if post.EmployeeId.String() == "" {
+	//	fmt.Println("Please Submit EmployeeId for deletion")
+	//	w.WriteHeader(http.StatusBadRequest)
+	//	w.Header().Set("Content-Type", "application/json")
+	//	json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "DELETE: Please Submit EmployeeId for deletion"})
+	//	return
+	//}
+
+	//TODO seems like this check is taken care of already
 	//PARSE BODY
-	validID, invalidIDErr := uuid.Parse(post.EmployeeId.String())
-	if invalidIDErr != nil {
-		fmt.Println("DELETE: Invalid employee UUID, not a valid UUID, try again: ", invalidIDErr.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "DELETE: Not a valid uuid!"})
-		return
-	}
+	//validID, invalidIDErr := uuid.Parse(post.EmployeeId.String())
+	//if invalidIDErr != nil {
+	//	fmt.Println("DELETE: Invalid employee UUID, not a valid UUID, try again: ", invalidIDErr.Error())
+	//	w.WriteHeader(http.StatusBadRequest)
+	//	w.Header().Set("Content-Type", "application/json")
+	//	json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "DELETE: Not a valid uuid!"})
+	//	return
+	//}
 
 	//input to delete item
 	input := &dynamodb.DeleteItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
 			"EmployeeId": {
-				S: aws.String(validID.String()),
+				S: aws.String(post.EmployeeId.String()),
 			},
 		},
 		TableName: aws.String(TableName),
@@ -76,7 +81,7 @@ func (s Server) DeleteEmployee(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Println("Deleted employeeId " + validID.String() + " from table" + TableName)
+	fmt.Println("Deleted employeeId " + post.EmployeeId.String() + " from table" + TableName)
 
 	//DO i still need these checks?
 	////TODO
@@ -101,7 +106,7 @@ func (s Server) DeleteEmployee(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 	w.Header().Set("Content-Type", "application/json")
-	resp := deletionResponse{Status: 204, Msg: "Successful deletion of Employee"}
+	resp := DeletionResponse{Status: 204, Msg: "Successful deletion of Employee"}
 	json.NewEncoder(w).Encode(resp)
 	fmt.Println("Removed employee! さよなら！")
 }
