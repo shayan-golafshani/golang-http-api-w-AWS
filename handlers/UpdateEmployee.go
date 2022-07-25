@@ -18,7 +18,7 @@ func (s Server) UpdateEmployee(w http.ResponseWriter, req *http.Request) {
 	var updatedEmployee store.Employee
 
 	decoder := json.NewDecoder(req.Body)
-
+	decoder.DisallowUnknownFields()
 	errGetEmp4Update := decoder.Decode(&updatedEmployee)
 	if errGetEmp4Update != nil {
 		fmt.Println("PATCH: Unknown field(s) included in request body or empty request body.  Please only send editable employee information.", errGetEmp4Update.Error())
