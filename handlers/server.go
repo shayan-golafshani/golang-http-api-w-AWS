@@ -2,14 +2,14 @@ package handlers
 
 import (
 	"fmt"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/gorilla/mux"
+	"github.com/shayan-golafshani/golang-http-api-w-AWS/store"
 	"net/http"
 )
 
 type Server struct {
 	Router http.Handler
-	Db     dynamodbiface.DynamoDBAPI
+	Db     store.SubsetDynamoDb
 }
 
 const (
