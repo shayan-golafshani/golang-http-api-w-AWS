@@ -32,13 +32,14 @@ func (s Server) PostEmployee(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(store.Error{Status: 500, Msg: "POST: Unable to decode request body! Try again"})
+		return
 	}
 	if post.Name == "" {
-		//TODO send a response of failed internal server error back
-		fmt.Println("POST: Please enter an Employee Name, it's empty now")
+		fmt.Println("POST: Please enter an Employee Name, it's empty.")
 		w.WriteHeader(http.StatusBadRequest)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "POST: Reform your request with an employeeName! Try again"})
+		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "POST: Reform your request with an employeeName!"})
+		return
 	}
 
 	newEmployee := store.Employee{
