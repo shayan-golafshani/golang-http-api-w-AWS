@@ -2,45 +2,37 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"net/http"
-	"os"
-
-	"github.com/gorilla/mux"
+	awslambda "github.com/aws/aws-lambda-go/lambda"
 	"github.com/shayan-golafshani/golang-http-api-w-AWS/handlers"
-	"github.com/shayan-golafshani/golang-http-api-w-AWS/store"
+
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/sendgrid/mcauto/apigw"
+)
+
+const (
+	sgGatewayJWTKey        string = "jwt"
+	sgGatewayResellerIDKey string = "resellerid"
+	sgGatewayScopesKey     string = "scopes"
+	sgGatewayUserIDKey     string = "userid"
+
+	contentTypeHeader          = "Content-Type"
+	contentTypeApplicationJSON = "application/json"
 )
 
 func main() {
-	store.AddEmployees()
+	//load in credentials
+	sess := session.Must(session.NewSessionWithOptions(session.Options{
+		SharedConfigState: session.SharedConfigEnable,
+	}))
 
-	myRouter := mux.NewRouter()
+	server, err := handlers.Router()
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = ":8080"
+	// Create DynamoDB client
+	server.Db = dynamodb.New(sess)
+
+	if err != nil {
+		fmt.Println("Unable to create http router for lambda:httpServer", err)
 	}
-
-	fmt.Println("server starting on port: ", port)
-
-	//Get employee details using EmployeeID
-	myRouter.HandleFunc("/v1/employee/{id}", func(w http.ResponseWriter, r *http.Request) {
-		handlers.GetEmployee(w, r)
-	}).Methods("GET")
-
-	//add deletion
-	myRouter.HandleFunc("/v1/employee/delete", func(w http.ResponseWriter, r *http.Request) {
-		handlers.DeleteEmployee(w, r)
-	}).Methods("DELETE")
-
-	myRouter.HandleFunc("/v1/employee/add", func(w http.ResponseWriter, r *http.Request) {
-		handlers.PostEmployee(w, r)
-	}).Methods("POST")
-
-	myRouter.HandleFunc("/v1/employee/{id}/update", func(w http.ResponseWriter, r *http.Request) {
-		handlers.UpdateEmployee(w, r)
-	}).Methods("PATCH")
-
-	err := http.ListenAndServe(port, myRouter)
-	log.Fatal(err)
+	awslambda.Start(apigw.Handle(server.Router))
 }

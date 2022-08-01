@@ -3,81 +3,68 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
-
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/shayan-golafshani/golang-http-api-w-AWS/store"
+	"net/http"
 )
 
-type UpdateEmployeeInfo struct {
-	Status          int            `json:"status,omitempty"`
-	UpdatedEmployee store.Employee `json:"updatedEmployee,omitempty"`
-}
-
-//Pick up here where you left off.
-func UpdateEmployee(w http.ResponseWriter, req *http.Request) {
+func (s Server) UpdateEmployee(w http.ResponseWriter, req *http.Request) {
 
 	var updatedEmployee store.Employee
 
 	decoder := json.NewDecoder(req.Body)
-	decoder.DisallowUnknownFields()
-	err := decoder.Decode(&updatedEmployee)
-	fmt.Println("JSON ERROR DECODING", err)
 
-	//reqAdminID := req.Header["Admin-Id"][0]
+	decoder.DisallowUnknownFields()
+
+	if decoderErr := decoder.Decode(&updatedEmployee); decoderErr != nil {
+		store.SendError(w, http.StatusBadRequest,
+			"PATCH: Unknown field(s) included in request body or empty request body. Please only use editable employee information.",
+			decoderErr)
+		return
+	}
+
+	//pull ID from URL && check for validity
 	params := mux.Vars(req)
 	employeeID := params["id"]
-
-	//auditAction := fmt.Sprintf("User %v attemped to update wthe tags for working group %v to %v", reqAdminID, workingGroupID, updatedTag)
-
-	if err != nil {
-		//errorMsg := "Unknown field(s) included in request body or empty request body.  Please only editable employee information."
-		//helpers.Panic(w, http.StatusBadRequest, errorMsg, err)
-		fmt.Println("Unknown field(s) included in request body or empty request body.  Please only send editable employee information.")
-		w.WriteHeader(http.StatusBadRequest)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "Unknown field(s) included in request body or empty request body.  Please only editable employee information."})
-		return
-	}
-	//params := mux.Vars(r)
-	//id := params["id"]
-
-	validID, employeeErr := uuid.Parse(employeeID)
-
-	//fmt.Println("YOUR VALID UUID", validID)
+	validID, invalidEmployeeErr := uuid.Parse(employeeID)
 
 	// 400 bad request, invalid uuid
-	if employeeErr != nil {
-		fmt.Println("Status 400, not a valid uuid!")
-		w.WriteHeader(http.StatusBadRequest)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "not a valid uuid!"})
+	if invalidEmployeeErr != nil {
+		store.SendError(w, http.StatusBadRequest, "PATCH: not a valid uuid!", invalidEmployeeErr)
 		return
 	}
 
-	//fmt.Println("STORE EMPLOYEES", store.Employees)
-	currentEmployeeInfo, ok := store.Employees[validID]
-	// 404 not found, uuid does not exist
-	if !ok {
-		fmt.Println("Status 404, employee id not found.")
-		w.WriteHeader(http.StatusNotFound)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "Employee ID not found!"})
+	output, errGetEmp4Update := s.Db.GetItem(&dynamodb.GetItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			"EmployeeId": &dynamodb.AttributeValue{
+				S: aws.String(validID.String()),
+			},
+		},
+		TableName: aws.String(TableName),
+	})
+
+	if errGetEmp4Update != nil {
+		store.SendError(w, http.StatusInternalServerError, "PATCH: Unable to find employee!", errGetEmp4Update)
 		return
 	}
 
-	//else update the employee with the new fields....everything except the UUID can change!
-	// type Employee struct {
-	// 	Name       string    `json:"name,omitempty"`
-	// 	Email      string    `json:"email,omitempty"`
-	// 	EmployeeId uuid.UUID `json:"employeeId,omitempty"`
-	// 	City       string    `json:"city,omitempty"`
-	// 	Address    string    `json:"address,omitempty"`
-	// 	Department string    `json:"department,omitempty"`
-	// }
+	currentEmployeeInfo := store.Employee{}
+	unmarshallErr := dynamodbattribute.UnmarshalMap(output.Item, &currentEmployeeInfo)
 
-	//this blocks changing the employeeUUID as well.
+	fmt.Println("Current employee info:", currentEmployeeInfo)
+
+	// Checking to see if the employee info can be unmarshalled from DynamoDb AV
+	//"PATCH: Problem unmarshalling your employee from Dynamo."
+	if unmarshallErr != nil {
+		store.SendError(w, http.StatusInternalServerError, "PATCH: Employee ID, not found-- unmarshall-able!", unmarshallErr)
+		return
+	}
+
+	//Fill in a new employee based on the fields from the new struct, etc.
 	newEmployeeCopy := store.Employee{
 		Name:       updatedEmployee.Name,
 		Email:      updatedEmployee.Email,
@@ -87,20 +74,63 @@ func UpdateEmployee(w http.ResponseWriter, req *http.Request) {
 		Department: updatedEmployee.Department,
 	}
 
-	//print out old employee info!
+	//Old employee info!
 	fmt.Println("BEFORE UPDATING INFO: ", currentEmployeeInfo)
-
+	//Patched employee info
 	fmt.Println("AFTER UPDATING INFO: ", newEmployeeCopy)
 
-	store.Employees[validID] = newEmployeeCopy
+	//check all struct fields
+	if newEmployeeCopy.Name == "" {
+		newEmployeeCopy.Name = currentEmployeeInfo.Name
+	}
+	if newEmployeeCopy.Email == "" {
+		newEmployeeCopy.Email = currentEmployeeInfo.Email
+	}
+	if newEmployeeCopy.EmployeeId == "" {
+		newEmployeeCopy.EmployeeId = currentEmployeeInfo.EmployeeId
+	}
+	if newEmployeeCopy.City == "" {
+		newEmployeeCopy.City = currentEmployeeInfo.City
+	}
+	if newEmployeeCopy.Address == "" {
+		newEmployeeCopy.Address = currentEmployeeInfo.Address
+	}
+	if newEmployeeCopy.Department == "" {
+		newEmployeeCopy.Department = currentEmployeeInfo.Department
+	}
+
+	//Store updated employee into dynamoDB
+	_, updateItemErr := s.Db.UpdateItem(&dynamodb.UpdateItemInput{
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":city":         {S: aws.String(newEmployeeCopy.City)},
+			":address":      {S: aws.String(newEmployeeCopy.Address)},
+			":employeeName": {S: aws.String(newEmployeeCopy.Name)},
+			":department":   {S: aws.String(newEmployeeCopy.Department)},
+			":email":        {S: aws.String(newEmployeeCopy.Email)},
+		},
+		TableName: aws.String(TableName),
+		Key: map[string]*dynamodb.AttributeValue{
+			"EmployeeId": {
+				S: aws.String(currentEmployeeInfo.EmployeeId),
+			},
+		},
+		ReturnValues: aws.String("UPDATED_NEW"),
+		UpdateExpression: aws.String(
+			`set city = :city,
+				address = :address,
+				employeeName = :employeeName,
+				department = :department,
+				email = :email`),
+	})
+
+	//FAILED TO UPDATE YOUR EMPLOYEE RECORD in Dynamo!
+	if updateItemErr != nil {
+		store.SendError(w, http.StatusInternalServerError, "PATCH: FAILED TO UPDATE YOUR EMPLOYEE RECORD!", updateItemErr)
+		return
+	}
 
 	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-
-	resp := UpdateEmployeeInfo{Status: 200, UpdatedEmployee: store.Employees[validID]}
-
-	//helpers.MakeHistory(validWorkingGroupID, validAdminID, auditAction, http.StatusOK, "Success")
+	resp := GetOneEmployee{Status: 200, Employee: newEmployeeCopy}
 	json.NewEncoder(w).Encode(resp)
-
-	fmt.Println("Successful update of employee info")
+	fmt.Println("Update Employee Successfully Completed")
 }

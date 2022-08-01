@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -10,61 +13,50 @@ import (
 )
 
 type deletionReq struct {
-	EmployeeId uuid.UUID `json:"employeeId,omitempty"`
+	EmployeeId uuid.UUID `json:"EmployeeId,omitempty"`
 }
 
-type deletionResponse struct {
-	Status    int
-	Employees map[uuid.UUID]store.Employee
+type DeletionResponse struct {
+	Status int
+	Msg    string
 }
 
-func DeleteEmployee(w http.ResponseWriter, r *http.Request) {
+func (s Server) DeleteEmployee(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("DELETE Employee Called")
 
-	var post deletionReq
+	var deleteReq deletionReq
 
-	err := json.NewDecoder(r.Body).Decode(&post)
+	// Decode your request into deletionReq, otherwise your deletion request body isn't configured properly
+	if deleteErrDynamo := json.NewDecoder(r.Body).Decode(&deleteReq); deleteErrDynamo != nil {
+		store.SendError(w, http.StatusBadRequest, "DELETE: Deletion request body config issues.", deleteErrDynamo)
+	}
 
-	if err != nil {
-		//helpers.Panic(w, 400, "Request Body Config Issues", err)
-		fmt.Println("Deletion Request Body Config Issues")
+	//deals with empty JSON being passed and improperly decoded.
+	if deleteReq.EmployeeId.String() == "00000000-0000-0000-0000-000000000000" {
+		store.SendError(w, http.StatusBadRequest, "DELETE: Cannot pass in an empty body, attach a valid employeeId to delete.",
+			errors.New("empty JSON being passed in delete request, need valid EmployeeId to delete"))
 		return
 	}
 
-	if post.EmployeeId.String() == "" {
-		fmt.Println("Please Submit EmployeeId for deletion")
+	//inputObject required to delete item from DynamoDB
+	input := &dynamodb.DeleteItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			"EmployeeId": {
+				S: aws.String(deleteReq.EmployeeId.String()),
+			},
+		},
+		TableName: aws.String(TableName),
+	}
 
-		w.WriteHeader(http.StatusBadRequest)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "Please Submit EmployeeId for deletion"})
+	if _, deleteItemErrDynamo := s.Db.DeleteItem(input); deleteItemErrDynamo != nil {
+		store.SendError(w, http.StatusInternalServerError, "DELETE: failed to delete record", deleteItemErrDynamo)
 		return
 	}
 
-	//PARSE BODY
-	validID, err := uuid.Parse(post.EmployeeId.String())
-
-	//CHECK FOR A VALID UUID
-	_, ok := store.Employees[validID]
-
-	if !ok {
-		fmt.Println("Status 404, Employee ID not found.")
-
-		w.WriteHeader(http.StatusNotFound)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 404, Msg: "Employee Id not valid, can't be deleted"})
-		return
-	}
-
-	if ok {
-		delete(store.Employees, validID)
-	}
+	fmt.Sprintf("Deleted employee Id %v, from table: %v", deleteReq.EmployeeId.String(), TableName)
 
 	w.WriteHeader(http.StatusNoContent)
-	w.Header().Set("Content-Type", "application/json")
-	resp := deletionResponse{204, store.Employees}
-
+	resp := DeletionResponse{Status: 204, Msg: "Successful Deletion of Employee"}
 	json.NewEncoder(w).Encode(resp)
-
-	fmt.Println("Removed employee! さよなら！")
-	fmt.Println("/n ------------------------------------- /n")
-	fmt.Println(store.Employees)
+	fmt.Println("Delete Employee Successfully Completed")
 }
