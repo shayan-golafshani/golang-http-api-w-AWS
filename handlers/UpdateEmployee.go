@@ -6,11 +6,10 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
-	"net/http"
-
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/shayan-golafshani/golang-http-api-w-AWS/store"
+	"net/http"
 )
 
 func (s Server) UpdateEmployee(w http.ResponseWriter, req *http.Request) {
@@ -18,26 +17,24 @@ func (s Server) UpdateEmployee(w http.ResponseWriter, req *http.Request) {
 	var updatedEmployee store.Employee
 
 	decoder := json.NewDecoder(req.Body)
+
 	decoder.DisallowUnknownFields()
-	errGetEmp4Update := decoder.Decode(&updatedEmployee)
-	if errGetEmp4Update != nil {
-		fmt.Println("PATCH: Unknown field(s) included in request body or empty request body.  Please only send editable employee information.", errGetEmp4Update.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "PATCH: Unknown field(s) included in request body or empty request body. Please only use editable employee information."})
+
+	if decoderErr := decoder.Decode(&updatedEmployee); decoderErr != nil {
+		store.SendError(w, http.StatusBadRequest,
+			"PATCH: Unknown field(s) included in request body or empty request body. Please only use editable employee information.",
+			decoderErr)
 		return
 	}
 
+	//pull ID from URL && check for validity
 	params := mux.Vars(req)
 	employeeID := params["id"]
 	validID, invalidEmployeeErr := uuid.Parse(employeeID)
 
 	// 400 bad request, invalid uuid
 	if invalidEmployeeErr != nil {
-		fmt.Println("PATCH: Status 400, not a valid uuid! : ", invalidEmployeeErr.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "PATCH: not a valid uuid!"})
+		store.SendError(w, http.StatusBadRequest, "PATCH: not a valid uuid!", invalidEmployeeErr)
 		return
 	}
 
@@ -51,27 +48,23 @@ func (s Server) UpdateEmployee(w http.ResponseWriter, req *http.Request) {
 	})
 
 	if errGetEmp4Update != nil {
-		fmt.Println("PATCH: Error getting EmployeeID out of DynamoDB:", errGetEmp4Update.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 500, Msg: "PATCH: Unable to find employee!"})
+		store.SendError(w, http.StatusInternalServerError, "PATCH: Unable to find employee!", errGetEmp4Update)
 		return
 	}
 
 	currentEmployeeInfo := store.Employee{}
 	unmarshallErr := dynamodbattribute.UnmarshalMap(output.Item, &currentEmployeeInfo)
 
-	fmt.Println("PRINTING OUTPUT ->", output)
+	fmt.Println("Current employee info:", currentEmployeeInfo)
 
 	// Checking to see if the employee info can be unmarshalled from DynamoDb AV
+	//"PATCH: Problem unmarshalling your employee from Dynamo."
 	if unmarshallErr != nil {
-		fmt.Println("PATCH: Problem unmarshalling your employee from Dynamo.", unmarshallErr.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 500, Msg: "PATCH: Employee ID, not found-- unmarshall-able!"})
+		store.SendError(w, http.StatusInternalServerError, "PATCH: Employee ID, not found-- unmarshall-able!", unmarshallErr)
 		return
 	}
 
+	//Fill in a new employee based on the fields from the new struct, etc.
 	newEmployeeCopy := store.Employee{
 		Name:       updatedEmployee.Name,
 		Email:      updatedEmployee.Email,
@@ -85,6 +78,26 @@ func (s Server) UpdateEmployee(w http.ResponseWriter, req *http.Request) {
 	fmt.Println("BEFORE UPDATING INFO: ", currentEmployeeInfo)
 	//Patched employee info
 	fmt.Println("AFTER UPDATING INFO: ", newEmployeeCopy)
+
+	//check all struct fields
+	if newEmployeeCopy.Name == "" {
+		newEmployeeCopy.Name = currentEmployeeInfo.Name
+	}
+	if newEmployeeCopy.Email == "" {
+		newEmployeeCopy.Email = currentEmployeeInfo.Email
+	}
+	if newEmployeeCopy.EmployeeId == "" {
+		newEmployeeCopy.EmployeeId = currentEmployeeInfo.EmployeeId
+	}
+	if newEmployeeCopy.City == "" {
+		newEmployeeCopy.City = currentEmployeeInfo.City
+	}
+	if newEmployeeCopy.Address == "" {
+		newEmployeeCopy.Address = currentEmployeeInfo.Address
+	}
+	if newEmployeeCopy.Department == "" {
+		newEmployeeCopy.Department = currentEmployeeInfo.Department
+	}
 
 	//Store updated employee into dynamoDB
 	_, updateItemErr := s.Db.UpdateItem(&dynamodb.UpdateItemInput{
@@ -110,18 +123,14 @@ func (s Server) UpdateEmployee(w http.ResponseWriter, req *http.Request) {
 				email = :email`),
 	})
 
+	//FAILED TO UPDATE YOUR EMPLOYEE RECORD in Dynamo!
 	if updateItemErr != nil {
-		fmt.Println("PATCH: FAILED TO UPDATE YOUR EMPLOYEE RECORD in Dynamo!", updateItemErr.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 500, Msg: "PATCH: FAILED TO UPDATE YOUR EMPLOYEE RECORD!"})
+		store.SendError(w, http.StatusInternalServerError, "PATCH: FAILED TO UPDATE YOUR EMPLOYEE RECORD!", updateItemErr)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-	//reuse the same struct
-	resp := GetEmployeeResponse{Status: 200, Data: newEmployeeCopy}
+	resp := GetOneEmployee{Status: 200, Employee: newEmployeeCopy}
 	json.NewEncoder(w).Encode(resp)
-	fmt.Println("Successful update of employee info")
+	fmt.Println("Update Employee Successfully Completed")
 }
