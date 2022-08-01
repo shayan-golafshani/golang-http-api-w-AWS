@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -17,96 +18,45 @@ type deletionReq struct {
 
 type DeletionResponse struct {
 	Status int
-	Msg    string ``
+	Msg    string
 }
 
 func (s Server) DeleteEmployee(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("DELETE Employee Called")
 
-	var post deletionReq
+	var deleteReq deletionReq
 
-	deleteErrDynamo := json.NewDecoder(r.Body).Decode(&post)
+	// Decode your request into deletionReq, otherwise your deletion request body isn't configured properly
+	if deleteErrDynamo := json.NewDecoder(r.Body).Decode(&deleteReq); deleteErrDynamo != nil {
+		store.SendError(w, http.StatusBadRequest, "DELETE: Deletion request body config issues.", deleteErrDynamo)
+	}
 
-	if deleteErrDynamo != nil {
-		fmt.Println("Deletion Request Body Config Issues", deleteErrDynamo.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "DELETE: Deletion request body config issues."})
+	//deals with empty JSON being passed and improperly decoded.
+	if deleteReq.EmployeeId.String() == "00000000-0000-0000-0000-000000000000" {
+		store.SendError(w, http.StatusBadRequest, "DELETE: Cannot pass in an empty body, attach a valid employeeId to delete.",
+			errors.New("empty JSON being passed in delete request, need valid EmployeeId to delete"))
 		return
 	}
 
-	if post.EmployeeId.String() == "00000000-0000-0000-0000-000000000000" {
-		fmt.Println("Cannot send a null JSON body in, specify an employeeId please")
-		w.WriteHeader(http.StatusBadRequest)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "DELETE: Cannot pass in an empty body, attach a valid employeeId to delete."})
-		return
-	}
-
-	//TODO seems like this check is also taken care of by the decoding from JSON....
-	//if post.EmployeeId.String() == "" {
-	//	fmt.Println("Please Submit EmployeeId for deletion")
-	//	w.WriteHeader(http.StatusBadRequest)
-	//	w.Header().Set("Content-Type", "application/json")
-	//	json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "DELETE: Please Submit EmployeeId for deletion"})
-	//	return
-	//}
-
-	//TODO seems like this check is taken care of already
-	//PARSE BODY
-	//validID, invalidIDErr := uuid.Parse(post.EmployeeId.String())
-	//if invalidIDErr != nil {
-	//	fmt.Println("DELETE: Invalid employee UUID, not a valid UUID, try again: ", invalidIDErr.Error())
-	//	w.WriteHeader(http.StatusBadRequest)
-	//	w.Header().Set("Content-Type", "application/json")
-	//	json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "DELETE: Not a valid uuid!"})
-	//	return
-	//}
-
-	//input to delete item
+	//inputObject required to delete item from DynamoDB
 	input := &dynamodb.DeleteItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
 			"EmployeeId": {
-				S: aws.String(post.EmployeeId.String()),
+				S: aws.String(deleteReq.EmployeeId.String()),
 			},
 		},
 		TableName: aws.String(TableName),
 	}
 
-	_, deleteErrDynamo = s.Db.DeleteItem(input)
-	if deleteErrDynamo != nil {
-		fmt.Println("DELETE: Got error calling DeleteItem", deleteErrDynamo.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 500, Msg: "DELETE: failed to delete Record from DynamoDB!"})
+	if _, deleteItemErrDynamo := s.Db.DeleteItem(input); deleteItemErrDynamo != nil {
+		store.SendError(w, http.StatusInternalServerError, "DELETE: failed to delete record", deleteItemErrDynamo)
 		return
 	}
 
-	fmt.Println("Deleted employeeId " + post.EmployeeId.String() + " from table" + TableName)
-
-	//DO i still need these checks?
-	////TODO
-	//_, ok := store.Employees[validID]
-	//
-	////TODO
-	//if !ok {
-	//	fmt.Println("Status 404, Employee ID not found.")
-	//
-	//	w.WriteHeader(http.StatusNotFound)
-	//	w.Header().Set("Content-Type", "application/json")
-	//	json.NewEncoder(w).Encode(store.Error{Status: 404, Msg: "Employee Id not valid, can't be deleted"})
-	//	return
-	//}
-
-	// WITH DYNAMODB PARADIGM JUST TRY TO GO FOR THE STRAIGHT DELETE!
-	//I could try to do another GET and see if that's successful, but it may be excessive
-	//TODO check code below
-	//if ok {
-	//	delete(store.Employees, validID)
-	//}
+	fmt.Sprintf("Deleted employee Id %v, from table: %v", deleteReq.EmployeeId.String(), TableName)
 
 	w.WriteHeader(http.StatusNoContent)
-	w.Header().Set("Content-Type", "application/json")
-	resp := DeletionResponse{Status: 204, Msg: "Successful deletion of Employee"}
+	resp := DeletionResponse{Status: 204, Msg: "Successful Deletion of Employee"}
 	json.NewEncoder(w).Encode(resp)
-	fmt.Println("Removed employee! さよなら！")
+	fmt.Println("Delete Employee Successfully Completed")
 }
