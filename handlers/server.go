@@ -4,12 +4,18 @@ import (
 	"fmt"
 	"github.com/gorilla/mux"
 	"github.com/shayan-golafshani/golang-http-api-w-AWS/store"
+	"log"
 	"net/http"
+	"time"
 )
 
 type Server struct {
 	Router http.Handler
 	Db     store.SubsetDynamoDb
+}
+
+func (s *Server) SetupRouter() {
+	s.Router = GetRouter(s)
 }
 
 const (
@@ -24,6 +30,8 @@ func GetRouter(server *Server) *mux.Router {
 
 	//New mux.Router
 	r := mux.NewRouter()
+	//USE logging middleware, w method durations, time-stamps, & define request type
+	//r.Use(CustomMiddleware)
 
 	//Create employee (C)
 	r.HandleFunc("/v1/employee/add", func(w http.ResponseWriter, r *http.Request) {
@@ -68,4 +76,27 @@ func NewServer(opts ...func(*Server)) (*Server, error) {
 		opt(server)
 	}
 	return server, nil
+}
+
+//Adds URI LOGGING, ADDS duration of how long the call took, adds Header application type JSON
+func CustomMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		//log request
+		log.Println(r.RequestURI)
+
+		//Add header key/value to all requests
+		w.Header().Add("Content-Type", "application/json")
+
+		//start the time for the request...
+		start := time.Now()
+
+		//TODO check that this still works
+		//wait for the request
+		next.ServeHTTP(w, r)
+		//print the duration
+		fmt.Println("duration_ms", time.Since(start).Milliseconds())
+
+		//pass on the rest of the request
+		next.ServeHTTP(w, r)
+	})
 }
