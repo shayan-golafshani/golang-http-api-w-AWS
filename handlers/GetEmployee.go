@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -24,7 +25,7 @@ type GetEmployeeResponse struct {
 }
 
 func (s Server) GetEmployee(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("GET EMPLOYEE CALLED")
+	fmt.Println("GET Employee Called")
 
 	params := mux.Vars(r)
 	id := params["id"]
@@ -33,14 +34,11 @@ func (s Server) GetEmployee(w http.ResponseWriter, r *http.Request) {
 
 	// 400 bad request, invalid uuid
 	if err != nil {
-		fmt.Println("GET: Status 400, not a valid uuid!", err.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 400, Msg: "GET: Not a valid uuid!"})
+		store.SendError(w, http.StatusBadRequest, "GET: Not a valid uuid!", err)
 		return
 	}
 
-	//Get your employeeItem out of DynamoDb for the get method
+	//Get your employeeItem out of DynamoDb
 	output, getEmployeeErr := s.Db.GetItem(&dynamodb.GetItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
 			"EmployeeId": &dynamodb.AttributeValue{
@@ -50,29 +48,33 @@ func (s Server) GetEmployee(w http.ResponseWriter, r *http.Request) {
 		TableName: aws.String(TableName),
 	})
 
+	//can't successfully return output from getItem
 	if getEmployeeErr != nil {
-		fmt.Println("GET: Error getting EmployeeID out of DynamoDB:", getEmployeeErr.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 500, Msg: "GET: Unable to find employee! Try again"})
+		store.SendError(w, http.StatusInternalServerError, "GET: Unable to retrieve that employee from DB!", getEmployeeErr)
+		return
+	}
+
+	//Check for employee existence in Dynamo
+	//If dynamo key doesn't exist it will return a status code of 200, with no data
+	if len(output.Item) == 0 {
+		store.SendError(w, http.StatusNotFound, "GET: Unable to find employee with that UUID!", errors.New("Output.Item has no length"))
 		return
 	}
 
 	employeeInfo := store.Employee{}
 	unmarshallErr := dynamodbattribute.UnmarshalMap(output.Item, &employeeInfo)
-	fmt.Println(" after Unmarshal MAP: STORE.EMPLOYEE", output.Item)
+	fmt.Println(" After Unmarshal MAP: STORE.EMPLOYEE: ", output.Item)
 
+	//check for unmarshall errors when unmarshall fields out of output.Item into Employee struct
+	// If not nil there's a problem unmarshalling your employee from Dynamo
 	if unmarshallErr != nil {
-		fmt.Println("GET: Problem unmarshalling your employee from Dynamo.", unmarshallErr.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(store.Error{Status: 500, Msg: "GET: Employee ID, not found-- unmarshall-able!"})
+		store.SendError(w, http.StatusInternalServerError, "GET: Employee ID, not found-- unmarshall-able!", unmarshallErr)
 		return
 	}
 
-	// 200 ok, uuid found and item was pulled out of dynamoDB
+	// 200 success, uuid found & item pulled out of dynamoDB
 	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
 	resp := GetEmployeeResponse{Status: 200, Data: employeeInfo}
 	json.NewEncoder(w).Encode(resp)
+	fmt.Println("Get Employee Successfully Completed")
 }
