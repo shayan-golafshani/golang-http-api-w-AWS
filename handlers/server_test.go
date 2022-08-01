@@ -63,14 +63,12 @@ var _ = Describe("Employee CRUD Server tests", func() {
 
 	BeforeEach(func() {
 		m = MockDynamoDB{}
-		server = Server{}
-
-		server.Router = GetRouter(&server)
+		server.SetupRouter()
 		server.Db = &m
 	})
 
-	Context("Happy path tests", func() {
-		It("Get Employee handler Success", func() {
+	Context("Happy Path tests", func() {
+		It("Status:200 Get Employee Success", func() {
 
 			req, err := http.NewRequest("GET", "/v1/employee/{id}", nil)
 			if err != nil {
@@ -112,13 +110,10 @@ var _ = Describe("Employee CRUD Server tests", func() {
 				fmt.Printf("unable to successfully decode response got error %v", err)
 			}
 
-			fmt.Println("Printing resp:", resp)
-
-			//refactor
 			Expect(resp.Status).To(Equal(http.StatusOK))
 			Expect(resp.Data).To(Equal(newEmployee))
 		})
-		It("Post Employee handler Success", func() {
+		It("Status:201 Post Employee Success", func() {
 			reader := strings.NewReader(`{"employeeName": "pablo", "city":  "Denver", "address": "3 Main St", "department": "eng"}`)
 
 			req, err := http.NewRequest("POST", "/v1/employee/add", reader)
@@ -140,13 +135,10 @@ var _ = Describe("Employee CRUD Server tests", func() {
 				fmt.Printf("unable to successfully decode response got error %v", err)
 			}
 
-			fmt.Println("Printing resp:", resp)
-
-			//refactor
 			Expect(resp.Status).To(Equal(http.StatusCreated))
 			Expect(resp.Employee.Name).To(Equal("pablo"))
 			Expect(resp.Employee.Email).To(Equal("pablo@twilio.com"))
-			//test for UUID REGexp
+			//UUID REGexp
 			r := regexp.MustCompile("^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-4[a-fA-F0-9]{3}-[8|9|aA|bB][a-fA-F0-9]{3}-[a-fA-F0-9]{12}$")
 			val := r.MatchString(resp.Employee.EmployeeId)
 			Expect(val).To(Equal(true))
@@ -154,7 +146,7 @@ var _ = Describe("Employee CRUD Server tests", func() {
 			Expect(resp.Employee.Address).To(Equal("3 Main St"))
 			Expect(resp.Employee.Department).To(Equal("eng"))
 		})
-		It("Delete Employee handler Success", func() {
+		It("Status:204 Delete Employee Success", func() {
 			//some UUID
 			uuid := uuid.New().String()
 			reader := strings.NewReader(fmt.Sprintf(`{"employeeId": "%v"}`, uuid))
@@ -178,16 +170,13 @@ var _ = Describe("Employee CRUD Server tests", func() {
 				fmt.Printf("unable to successfully decode response got error %v", err)
 			}
 
-			fmt.Println("Printing resp:", resp)
-
-			//refactor
 			Expect(resp.Status).To(Equal(http.StatusNoContent))
-			Expect(resp.Msg).To(Equal("Successful deletion of Employee"))
+			Expect(resp.Msg).To(Equal("Successful Deletion of Employee"))
 		})
-		It("Update Employee handler Success", func() {
+		It("Status 200: Update Employee Success", func() {
 			reader := strings.NewReader(`{"employeeName": "pablo", "email":"pablo@yahoo.com", "city":  "Denver", "address": "3 Main St", "department": "eng"}`)
 
-			req, err := http.NewRequest("POST", "/v1/employee/{id}/update", reader)
+			req, err := http.NewRequest("PATCH", "/v1/employee/{id}/update", reader)
 			if err != nil {
 				fmt.Printf("could not create a request: %v", err.Error())
 			}
@@ -199,22 +188,23 @@ var _ = Describe("Employee CRUD Server tests", func() {
 
 			req = mux.SetURLVars(req, vars)
 
-			//newEmployee := store.Employee{
-			//	Name:       "pablo",
-			//	Email:      "pablo@yahoo.com",
-			//	EmployeeId: "663c9932-383d-44d1-8b9d-1071731a6312",
-			//	City:       "Denver",
-			//	Address:    "3 Main St",
-			//	Department: "eng",
-			//}
+			newEmployee := store.Employee{
+				Name:       "pablo",
+				Email:      "pablo@yahoo.com",
+				EmployeeId: "663c9932-383d-44d1-8b9d-1071731a6312",
+				City:       "Denver",
+				Address:    "3 Main St",
+				Department: "sales",
+			}
 
-			//item, _ := dynamodbattribute.MarshalMap(newEmployee)
+			item, _ := dynamodbattribute.MarshalMap(newEmployee)
 
-			//update error
-			//m.UpdateError = nil
-			//m.UpdateOutput = dynamodb.UpdateItemOutput{
-			//	Attributes: item,
-			//}
+			m.GetError = nil
+			m.GetOutput = dynamodb.GetItemOutput{
+				Item: item,
+			}
+
+			m.UpdateError = nil
 
 			server.UpdateEmployee(w, req)
 
@@ -228,24 +218,17 @@ var _ = Describe("Employee CRUD Server tests", func() {
 				fmt.Printf("unable to successfully decode response got error %v", err)
 			}
 
-			fmt.Println("Printing resp:", resp)
-
 			//refactor
 			Expect(resp.Status).To(Equal(http.StatusOK))
-			//Expect(resp.Employee.Name).To(Equal("pablo"))
-			//Expect(resp.Employee.Email).To(Equal("pablo@twilio.com"))
-			//test for UUID REGexp
-			//r := regexp.MustCompile("^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-4[a-fA-F0-9]{3}-[8|9|aA|bB][a-fA-F0-9]{3}-[a-fA-F0-9]{12}$")
-			//val := r.MatchString(resp.Employee.EmployeeId)
-			//Expect(val).To(Equal(true))
-			//Expect(resp.Employee.City).To(Equal("Denver"))
-			//Expect(resp.Employee.Address).To(Equal("3 Main St"))
-			//Expect(resp.Employee.Department).To(Equal("eng"))
+			//update field for test
+			newEmployee.Department = "eng"
+			Expect(resp.Employee).To(Equal(newEmployee))
+
 		})
 	})
 
 	Context("Sad Path tests", func() {
-		It("Should test Invalid UUID passed to GET Employee Handler", func() {
+		It("Should test GET Employee (400), Invalid UUID", func() {
 
 			req, err := http.NewRequest("GET", "/v1/employee/{id}", nil)
 			if err != nil {
@@ -254,7 +237,7 @@ var _ = Describe("Employee CRUD Server tests", func() {
 
 			w := httptest.NewRecorder()
 
-			//some fake UUID
+			//some invalid UUID
 			vars := map[string]string{"id": "ZZ3c9932-383d-44d1-8b9d-1071731a6312"}
 
 			req = mux.SetURLVars(req, vars)
@@ -272,41 +255,10 @@ var _ = Describe("Employee CRUD Server tests", func() {
 				fmt.Printf("unable to successfully decode response got error %v", err)
 			}
 
-			//Update tests
 			Expect(resp.Status).To(Equal(http.StatusBadRequest))
 			Expect(resp.Msg).To(Equal("GET: Not a valid uuid!"))
-
 		})
-		It("Should test GET EMPLOYEE, getItem method in fake DynamoDB client", func() {
-
-			req, err := http.NewRequest("GET", "/v1/employee/{id}", nil)
-			if err != nil {
-				fmt.Printf("could not create a request: %v", err.Error())
-			}
-
-			w := httptest.NewRecorder()
-
-			//some fake UUID
-			vars := map[string]string{"id": "663c9932-383d-44d1-8b9d-1071731a6312"}
-
-			req = mux.SetURLVars(req, vars)
-
-			m.GetError = errors.New("error getting EmployeeID out of DynamoDB")
-			m.GetOutput = dynamodb.GetItemOutput{}
-
-			server.GetEmployee(w, req)
-
-			res := w.Result()
-			defer res.Body.Close()
-
-			var resp store.Error
-
-			err = json.NewDecoder(res.Body).Decode(&resp)
-
-			Expect(resp.Status).To(Equal(http.StatusInternalServerError))
-			Expect(resp.Msg).To(Equal("GET: Unable to find employee! Try again"))
-		})
-		It("Should test GET EMPLOYEE, getItem method for missing not found user", func() {
+		It("Should test GET Employee (404), getItem method error for not found user", func() {
 
 			req, err := http.NewRequest("GET", "/v1/employee/{id}", nil)
 			if err != nil {
@@ -333,10 +285,39 @@ var _ = Describe("Employee CRUD Server tests", func() {
 			err = json.NewDecoder(res.Body).Decode(&resp)
 
 			Expect(resp.Status).To(Equal(http.StatusNotFound))
-			Expect(resp.Msg).To(Equal("GET: Unable to find employee! Try again"))
+			Expect(resp.Msg).To(Equal("GET: Unable to find employee with that UUID!"))
 		})
-		It("Should test invalid  POST response body issues, for example improper json", func() {
-			//missing comma after address
+		It("Should test GET Employee (500), getItem method error in mock DynamoDB client", func() {
+
+			req, err := http.NewRequest("GET", "/v1/employee/{id}", nil)
+			if err != nil {
+				fmt.Printf("could not create a request: %v", err.Error())
+			}
+
+			w := httptest.NewRecorder()
+
+			//some fake UUID
+			vars := map[string]string{"id": "663c9932-383d-44d1-8b9d-1071731a6312"}
+
+			req = mux.SetURLVars(req, vars)
+
+			m.GetError = errors.New("error getting EmployeeID out of DynamoDB")
+			m.GetOutput = dynamodb.GetItemOutput{}
+
+			server.GetEmployee(w, req)
+
+			res := w.Result()
+			defer res.Body.Close()
+
+			var resp store.Error
+
+			err = json.NewDecoder(res.Body).Decode(&resp)
+
+			Expect(resp.Status).To(Equal(http.StatusInternalServerError))
+			Expect(resp.Msg).To(Equal("GET: Unable to retrieve that employee from DB!"))
+		})
+		It("Should test POST Employee (500), request body -- invalid json", func() {
+			//missing comma after address field
 			reader := strings.NewReader(`{"employeeName": "pablo", "city":  "Denver", "address": "3 Main St" "department": "eng"}`)
 
 			req, err := http.NewRequest("POST", "/v1/employee/add", reader)
@@ -358,13 +339,10 @@ var _ = Describe("Employee CRUD Server tests", func() {
 				fmt.Printf("unable to successfully decode response got error %v", err)
 			}
 
-			fmt.Println("Printing resp:", resp)
-
-			//refactor
 			Expect(resp.Status).To(Equal(http.StatusInternalServerError))
-			Expect(resp.Msg).To(Equal("POST: Unable to decode request body! Try again"))
+			Expect(resp.Msg).To(Equal("POST: Unable to decode request body!"))
 		})
-		It("Should test for an empty name in POST body issues", func() {
+		It("Should test POST Employee (500), empty name field in POST json body ", func() {
 			//missing "employeeName": "pablo", from beginning of JSON response
 			reader := strings.NewReader(`{"city":  "Denver", "address": "3 Main St", "department": "eng"}`)
 
@@ -387,13 +365,10 @@ var _ = Describe("Employee CRUD Server tests", func() {
 				fmt.Printf("unable to successfully decode response got error %v", err)
 			}
 
-			fmt.Println("Printing resp:", resp)
-
-			//refactor
 			Expect(resp.Status).To(Equal(http.StatusBadRequest))
 			Expect(resp.Msg).To(Equal("POST: Reform your request with an employeeName!"))
 		})
-		It("Should test invalid PUT item error in POST", func() {
+		It("Should test POST Employee (500), putItem method error in mock DynamoDB client", func() {
 			reader := strings.NewReader(`{"employeeName": "pablo", "city":  "Denver", "address": "3 Main St", "department": "eng"}`)
 
 			req, err := http.NewRequest("POST", "/v1/employee/add", reader)
@@ -418,13 +393,10 @@ var _ = Describe("Employee CRUD Server tests", func() {
 				fmt.Printf("unable to successfully decode response got error %v", err)
 			}
 
-			fmt.Println("Printing resp:", resp)
-
-			//refactor
 			Expect(resp.Status).To(Equal(http.StatusInternalServerError))
-			Expect(resp.Msg).To(Equal("POST: failed to put Record to DynamoDB!"))
+			Expect(resp.Msg).To(Equal("POST: failed to put new Employee Record!"))
 		})
-		It("Should test DELETE Employee request body issues, for example improper json", func() {
+		It("Should test DELETE Employee (400), request body -- invalid json", func() {
 			//some UUID
 			uuid := uuid.New().String()
 			//missing quote after employeeId to break JSON
@@ -449,46 +421,11 @@ var _ = Describe("Employee CRUD Server tests", func() {
 				fmt.Printf("unable to successfully decode response got error %v", err)
 			}
 
-			fmt.Println("Printing resp:", resp)
-
-			//refactor
 			Expect(resp.Status).To(Equal(http.StatusBadRequest))
 			Expect(resp.Msg).To(Equal("DELETE: Deletion request body config issues."))
 		})
-		//It("Should test DELETE Employee request body has proper UUID", func() {
-		//
-		//	//invalid UUID
-		//	reader := strings.NewReader(`{"employeeId": "1d7aafd0-5b1f-4eec-8127-639d8ceb5ed0zz"}`)
-		//
-		//	req, err := http.NewRequest("DELETE", "/v1/employee/delete", reader)
-		//	if err != nil {
-		//		fmt.Printf("could not create a request: %v", err.Error())
-		//	}
-		//
-		//	w := httptest.NewRecorder()
-		//
-		//	server.DeleteEmployee(w, req)
-		//
-		//	res := w.Result()
-		//	defer res.Body.Close()
-		//
-		//	var resp DeletionResponse
-		//
-		//	err = json.NewDecoder(res.Body).Decode(&resp)
-		//	if err != nil {
-		//		fmt.Printf("unable to successfully decode response got error %v", err)
-		//	}
-		//
-		//	fmt.Println("Printing resp:", resp)
-		//
-		//	//refactor
-		//	Expect(resp.Status).To(Equal(http.StatusBadRequest))
-		//	Expect(resp.Msg).To(Equal("DELETE: Not a valid uuid!"))
-		//})
-
-		It("Should test DELETE Employee request body can deal with empty JSON edge-case", func() {
-
-			//empty JSON turns out this case is also taken care of....
+		It("Should test DELETE Employee (400), request body-- empty json edge-case", func() {
+			//empty JSON edge-case, also taken care of....
 			reader := strings.NewReader(`{}`)
 
 			req, err := http.NewRequest("DELETE", "/v1/employee/delete", reader)
@@ -510,13 +447,10 @@ var _ = Describe("Employee CRUD Server tests", func() {
 				fmt.Printf("unable to successfully decode response got error %v", err)
 			}
 
-			fmt.Println("Printing resp:", resp)
-
-			//refactor
 			Expect(resp.Status).To(Equal(http.StatusBadRequest))
 			Expect(resp.Msg).To(Equal("DELETE: Cannot pass in an empty body, attach a valid employeeId to delete."))
 		})
-		It("Should test DELETE invalid Delete Item error", func() {
+		It("Should test DELETE Employee (500), deleteItem method error in mock DynamoDB client", func() {
 			//some UUID
 			uuid := uuid.New().String()
 			reader := strings.NewReader(fmt.Sprintf(`{"employeeId": "%v"}`, uuid))
@@ -543,15 +477,13 @@ var _ = Describe("Employee CRUD Server tests", func() {
 				fmt.Printf("unable to successfully decode response got error %v", err)
 			}
 
-			fmt.Println("Printing resp:", resp)
-
-			//refactor
 			Expect(resp.Status).To(Equal(http.StatusInternalServerError))
-			Expect(resp.Msg).To(Equal("DELETE: failed to delete Record from DynamoDB!"))
+			Expect(resp.Msg).To(Equal("DELETE: failed to delete record"))
 		})
-		It("Should test Update unknown fields in JSON", func() {
+		It("Should test UPDATE Employee (500), unknown additional field in json", func() {
 			//extra field
-			reader := strings.NewReader(`{"TEEEHEE": "UNKOWN!!", "employeeName": "pablo", "email":"pablo@yahoo.com", "city":  "Denver", "address": "3 Main St", "department": "eng"}`)
+			reader := strings.NewReader(
+				`{"TEEEHEE": "UNKNOWN!!", "employeeName": "pablo", "email":"pablo@yahoo.com", "city":  "Denver", "address": "3 Main St", "department": "eng"}`)
 
 			req, err := http.NewRequest("POST", "/v1/employee/{id}/update", reader)
 			if err != nil {
@@ -577,13 +509,10 @@ var _ = Describe("Employee CRUD Server tests", func() {
 				fmt.Printf("unable to successfully decode response got error %v", err)
 			}
 
-			fmt.Println("Printing resp:", resp)
-
-			//refactor
 			Expect(resp.Status).To(Equal(http.StatusBadRequest))
 			Expect(resp.Msg).To(Equal("PATCH: Unknown field(s) included in request body or empty request body. Please only use editable employee information."))
 		})
-		It("Should test Update invalid UUID field in JSON", func() {
+		It("Should test UPDATE Employee (500), invalid UUID field in JSON", func() {
 			reader := strings.NewReader(`{"employeeName": "pablo", "email":"pablo@yahoo.com", "city":  "Denver", "address": "3 Main St", "department": "eng"}`)
 
 			req, err := http.NewRequest("POST", "/v1/employee/{id}/update", reader)
@@ -616,7 +545,7 @@ var _ = Describe("Employee CRUD Server tests", func() {
 			Expect(resp.Status).To(Equal(http.StatusBadRequest))
 			Expect(resp.Msg).To(Equal("PATCH: not a valid uuid!"))
 		})
-		It("Should test Update's GET-ITEM method", func() {
+		It("Should test UPDATE Employee (500), getItem method error in mock DynamoDB client", func() {
 			reader := strings.NewReader(`{"employeeName": "pablo", "email":"pablo@yahoo.com", "city":  "Denver", "address": "3 Main St", "department": "eng"}`)
 
 			req, err := http.NewRequest("POST", "/v1/employee/{id}/update", reader)
@@ -646,13 +575,10 @@ var _ = Describe("Employee CRUD Server tests", func() {
 				fmt.Printf("unable to successfully decode response got error %v", err)
 			}
 
-			fmt.Println("Printing resp:", resp)
-
-			//refactor
 			Expect(resp.Status).To(Equal(http.StatusInternalServerError))
 			Expect(resp.Msg).To(Equal("PATCH: Unable to find employee!"))
 		})
-		It("Should test Update's Update-ITEM method", func() {
+		It("Should test UPDATE Employee (500), updateItem method error in mock DynamoDb client", func() {
 			reader := strings.NewReader(`{"employeeName": "pablo", "email":"pablo@yahoo.com", "city":  "Denver", "address": "3 Main St", "department": "eng"}`)
 
 			req, err := http.NewRequest("POST", "/v1/employee/{id}/update", reader)
@@ -662,7 +588,7 @@ var _ = Describe("Employee CRUD Server tests", func() {
 
 			w := httptest.NewRecorder()
 
-			//some fake invalid uuid
+			//some fake uuid
 			vars := map[string]string{"id": "663c9932-383d-44d1-8b9d-1071731a6312"}
 
 			req = mux.SetURLVars(req, vars)
@@ -686,5 +612,4 @@ var _ = Describe("Employee CRUD Server tests", func() {
 			Expect(resp.Msg).To(Equal("PATCH: FAILED TO UPDATE YOUR EMPLOYEE RECORD!"))
 		})
 	})
-
 })
